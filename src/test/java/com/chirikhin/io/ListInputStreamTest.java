@@ -10,6 +10,18 @@ import java.util.concurrent.LinkedBlockingQueue;
 import static org.junit.Assert.*;
 
 public class ListInputStreamTest {
+
+    @Test
+    public void read2() throws Exception {
+        BlockingQueue<byte[]> blockingQueue = new LinkedBlockingQueue<>();
+        blockingQueue.add(new byte[] {25, 30, 40});
+        blockingQueue.add(new byte[] {10});
+        ListInputStream listInputStream = new ListInputStream(blockingQueue);
+
+        byte[] bytes = new byte[4];
+        listInputStream.read(bytes);
+        Assert.assertArrayEquals(bytes, new byte[] {25, 30, 40, 10});
+    }
     @Test
     public void read() throws Exception {
         BlockingQueue<byte[]> blockingQueue = new LinkedBlockingQueue<>();

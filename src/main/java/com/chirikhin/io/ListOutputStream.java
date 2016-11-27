@@ -31,5 +31,10 @@ public class ListOutputStream extends OutputStream {
         collection.add(a);
     }
 
+    @Override
+    public void write(byte[] b) {
+        collection.add(b);
+    }
+
 
 }
