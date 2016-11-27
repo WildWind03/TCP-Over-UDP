@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Logger;
@@ -19,7 +20,7 @@ public class Socket implements Closeable {
         socketImpl = new SocketImpl(host, port, outputBlockingQueue, inputBlockingQueue);
     }
 
-    public Socket(String host, int port) throws SocketException {
+    public Socket(String host, int port) throws SocketException, SocketTimeoutException, InterruptedException {
         socketImpl = new SocketImpl(host, port, outputBlockingQueue, inputBlockingQueue);
         socketImpl.initAck();
     }

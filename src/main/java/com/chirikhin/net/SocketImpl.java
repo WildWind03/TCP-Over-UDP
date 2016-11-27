@@ -19,7 +19,6 @@ class SocketImpl {
     private static final int TCP_PORT = 12301;
     private static final int TIME_TO_WAIT = 2000;
 
-    private boolean isInitialized = false;
     private boolean isResponseReceived = false;
 
     private final DatagramSocket datagramSocket;
@@ -29,10 +28,11 @@ class SocketImpl {
 
     private final MessageReceiver messageReceiver;
     private final MessageSender messageSender;
+    private final MessageResender messageResender;
 
     private final BlockingQueue<BaseMessage> messagesToSend = new LinkedBlockingQueue<>();
     private final BlockingQueue<BaseMessage> receivedMessages = new LinkedTransferQueue<>();
-    private final BlockingQueue<BaseMessage> notConfirmedMessages = new LinkedBlockingQueue<>();
+    private final BlockingQueue<SentMessage> notConfirmedMessages = new LinkedBlockingQueue<>();
 
     SocketImpl(String host, int port, BlockingQueue<byte[]> outputCollection,
                BlockingQueue<byte[]> inputCollection) throws SocketException {
@@ -43,12 +43,20 @@ class SocketImpl {
 
         messageReceiver = new MessageReceiver(receivedMessages, datagramSocket);
         messageSender = new MessageSender(messagesToSend, datagramSocket, receiverInetSocketAddress);
+        messageResender = new MessageResender(messagesToSend, notConfirmedMessages);
     }
 
-    void initAck() throws InterruptedException {
+    void initAck() throws InterruptedException, SocketTimeoutException {
         BaseMessage baseMessage = new SalutationMessage(IDRegisterer.getInstance().getNext());
+        baseMessage.attachFunction(confirmMessage -> {
+            ConfirmMessage newConfirmMessage = new ConfirmMessage(IDRegisterer.getInstance().getNext(), confirmMessage.getId());
+            messagesToSend.add(newConfirmMessage);
+            isResponseReceived = true;
+            baseMessage.notify();
+        });
+
         messagesToSend.add(baseMessage);
-        notConfirmedMessages.add(baseMessage);
+        notConfirmedMessages.add(new SentMessage(baseMessage, System.currentTimeMillis()));
 
         long timeOfStart = System.currentTimeMillis();
         long timeToWait = TIME_TO_WAIT;
@@ -57,17 +65,13 @@ class SocketImpl {
             baseMessage.wait(timeToWait);
 
             if (isResponseReceived) {
-                break;
+                return;
             } else {
                 timeToWait = System.currentTimeMillis() - timeOfStart;
             }
         }
 
-        if (isInitialized) {
-            
-        } else {
-
-        }
+        throw new SocketTimeoutException("Can't set up a connection");
     }
 
     int getPort() {
