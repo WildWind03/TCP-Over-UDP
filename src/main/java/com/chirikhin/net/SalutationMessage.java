@@ -1,6 +1,5 @@
 package com.chirikhin.net;
 
-import java.nio.ByteBuffer;
 import java.util.logging.Logger;
 
 public class SalutationMessage extends BaseMessage {
@@ -8,6 +7,11 @@ public class SalutationMessage extends BaseMessage {
 
     public SalutationMessage(int id) {
         super(id);
+    }
+
+    @Override
+    void process(MySocketImpl mySocketImpl) {
+        mySocketImpl.handleSalutationMessage(this);
     }
 
     @Override

@@ -14,6 +14,11 @@ public class ByteMessage extends BaseMessage {
     }
 
     @Override
+    void process(MySocketImpl mySocketImpl) {
+        mySocketImpl.handleByteMessage(this);
+    }
+
+    @Override
     byte[] bytes() {
         return ArrayUtils.addAll(getByteArrayWithTypeAndId(MessageType.BYTE), bytes);
     }

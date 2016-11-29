@@ -48,7 +48,6 @@ public class ListInputStreamTest {
 
         bytes.add(text1.getBytes(Charset.forName("UTF-8")));
         bytes.add(text2.getBytes(Charset.forName("UTF-8")));
-       // bytes.add(text3.getBytes(Charset.forName("UTF-8")));
 
         ListInputStream listInputStream = new ListInputStream(bytes);
 

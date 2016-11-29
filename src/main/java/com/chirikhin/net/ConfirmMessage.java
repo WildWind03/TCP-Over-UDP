@@ -15,11 +15,20 @@ public class ConfirmMessage extends BaseMessage {
     }
 
     @Override
+    void process(MySocketImpl mySocketImpl) {
+        mySocketImpl.handleConfirmMessage(this);
+    }
+
+    @Override
     byte[] bytes() {
         ByteBuffer byteBuffer = ByteBuffer.allocate(4);
         byteBuffer.asIntBuffer().put(confirmMessageId);
         byte[] idConfirmMessage = byteBuffer.array();
 
         return ArrayUtils.addAll(getByteArrayWithTypeAndId(MessageType.CONFIRM), idConfirmMessage);
+    }
+
+    public int getConfirmMessageId() {
+        return confirmMessageId;
     }
 }

@@ -16,6 +16,7 @@ public class ListInputStream extends InputStream {
 
     private byte[] currentBytes;
     private int currentPos = 0;
+    private boolean isClosed = false;
 
     private final BlockingQueue<byte[]> list;
 
@@ -24,6 +25,10 @@ public class ListInputStream extends InputStream {
     }
 
     public int read() throws IOException {
+        if (isClosed) {
+            return -1;
+        }
+
         byte[] bytes = new byte[1];
 
         read(bytes);
@@ -33,6 +38,10 @@ public class ListInputStream extends InputStream {
 
     @Override
     public int read(byte[] b) throws IOException {
+        if (isClosed) {
+            return -1;
+        }
+
         int length = b.length;
         int currentLength = 0;
 
@@ -83,5 +92,10 @@ public class ListInputStream extends InputStream {
 
         return currentLength;
 
+    }
+
+    @Override
+    public void close() {
+        isClosed = true;
     }
 }

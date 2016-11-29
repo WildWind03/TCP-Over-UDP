@@ -8,7 +8,7 @@ import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.util.concurrent.BlockingQueue;
 
-public class MessageSender implements Runnable {
+public class MessageSender extends AbstractMessageSender {
     private static final Logger logger = Logger.getLogger(MessageSender.class.getName());
 
     private final BlockingQueue<BaseMessage> baseMessages;

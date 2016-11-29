@@ -6,7 +6,7 @@ public enum IDRegisterer {
     INSTANCE;
 
     private static final Logger logger = Logger.getLogger(IDRegisterer.class.getName());
-    private static volatile int counter = 0;
+    private static volatile int counter = 6;
 
     public int getNext() {
         return counter++;

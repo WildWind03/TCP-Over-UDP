@@ -10,6 +10,11 @@ public class CloseMessage extends BaseMessage {
     }
 
     @Override
+    void process(MySocketImpl mySocketImpl) {
+        mySocketImpl.handleCloseMessage(this);
+    }
+
+    @Override
     byte[] bytes() {
         return getByteArrayWithTypeAndId(MessageType.CLOSE);
     }

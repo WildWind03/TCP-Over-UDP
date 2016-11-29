@@ -6,7 +6,6 @@ import java.util.logging.Logger;
 public abstract class BaseMessage {
     private static final Logger logger = Logger.getLogger(BaseMessage.class.getName());
     private final int id;
-    private OnConfirmEvent onConfirmEvent;
 
     public BaseMessage(int id) {
         this.id = id;
@@ -16,15 +15,7 @@ public abstract class BaseMessage {
         return id;
     }
 
-    public void attachFunction(OnConfirmEvent runnable) {
-        this.onConfirmEvent = runnable;
-    }
-
-    public void run(ConfirmMessage confirmMessage) {
-        if (null != onConfirmEvent) {
-            onConfirmEvent.execute(confirmMessage);
-        }
-    }
+    abstract void process(MySocketImpl mySocketImpl);
 
 
     protected byte[] getByteArrayWithTypeAndId(MessageType messageType) {
