@@ -34,9 +34,7 @@ class CreatedByUserSocketImpl extends MySocketImpl {
                     baseMessage.process(CreatedByUserSocketImpl.this);
                     handledMessages.add(baseMessage);
                 } else {
-                    if (!(baseMessage instanceof ConfirmMessage) || ((ConfirmMessage) baseMessage).getConfirmMessageId() == ID_FOR_SALUTATION_MESSAGE) { //SolutationAnswer
-                        messagesToSend.add(new ConfirmMessage(IDRegisterer.getInstance().getNext(), baseMessage.getId()));
-                    }
+                    messagesToSend.add(new ConfirmMessage(IDRegisterer.getInstance().getNext(), baseMessage.getId()));
                 }
 
             } catch (InterruptedException e) {
@@ -82,6 +80,9 @@ class CreatedByUserSocketImpl extends MySocketImpl {
 
     private final BlockingQueue<byte[]> outputCollection = new LinkedBlockingQueue<>();
     private final BlockingQueue<byte[]> inputCollection = new LinkedBlockingQueue<>();
+
+    private boolean isClosed = false;
+    private boolean isReadyToClose = false;
 
     CreatedByUserSocketImpl(String host, int port) throws SocketException, SocketTimeoutException, InterruptedException {
         datagramSocket = new DatagramSocket(TCP_PORT);
@@ -129,9 +130,41 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     }
 
     public void close() {
+        listOutputStream.close();
+        listInputStream.close();
+        messageReceiver.setMessageFilter(baseMessage -> !(baseMessage instanceof ByteMessage));
+
+        Object lock = new Object();
+
+        messageResender.setRunnableIfThereIsNothingToSend(() -> {
+            isReadyToClose = true;
+            lock.notify();
+        });
+
+        try {
+            while (!isReadyToClose) {
+                lock.wait();
+            }
+        } catch (InterruptedException e) {
+            logger.error(e.getMessage());
+        }
+
         CloseMessage closeMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
         messagesToSend.add(closeMessage);
         notConfirmedMessages.add(new SentMessage(closeMessage, System.currentTimeMillis()));
+
+        try {
+            messageReceiver.close(() -> {
+                isClosed = true;
+                lock.notify();
+            });
+
+            while (!isClosed) {
+                lock.wait();
+            }
+        } catch (IOException | InterruptedException e) {
+            logger.error(e.getMessage());
+        }
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {
@@ -148,6 +181,7 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         try {
             messageReceiver.close();
             listOutputStream.close();
+            listInputStream.close();
         } catch (IOException e) {
             logger.error(e.getMessage());
         }

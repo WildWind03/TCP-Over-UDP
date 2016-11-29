@@ -5,6 +5,7 @@ import com.chirikhin.io.ListInputStream;
 import com.chirikhin.io.ListOutputStream;
 import org.apache.log4j.Logger;
 
+import java.io.Closeable;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -12,29 +13,54 @@ import java.net.SocketTimeoutException;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 class CreatedByServerSocketImpl extends MySocketImpl {
-    private class MessageController implements Runnable {
+    private class MessageController implements Runnable, Closeable {
 
         private final Logger logger = Logger.getLogger(MessageController.class.getName());
         private static final int SIZE_OF_HANDLED_MESSAGES_LIST = 1000;
+        private static final int TIMEOUT_FOR_POLL_FROM_QUEUE = 1000;
+        private static final int MAX_TIME_BETWEEN_MESSAGES_WHEN_CLOSE = 1000;
+
+        private Predicate<BaseMessage> messageFilter = baseMessage -> true;
 
         private final CycleLinkedList<BaseMessage> handledMessages = new CycleLinkedList<>(SIZE_OF_HANDLED_MESSAGES_LIST);
+
+        private boolean isGoingToClose = false;
+        private long timeOfLastPoll;
+        private Runnable runnableWhenThereIsNothingToHandle;
 
         @Override
         public void run() {
             try {
-                BaseMessage baseMessage = receivedMessages.take();
+                while (!Thread.currentThread().isInterrupted()) {
+                    BaseMessage baseMessage = receivedMessages.poll(TIMEOUT_FOR_POLL_FROM_QUEUE, TimeUnit.MILLISECONDS);
 
-                if (!isConnectionSet() && !(baseMessage instanceof SalutationMessage)) {
-                    haveConnectionSet();
-                }
+                    if (null == baseMessage || !messageFilter.test(baseMessage)) {
+                        continue;
+                    }
 
-                if (!isThisMessageAlreadyHandled(baseMessage)) {
-                    baseMessage.process(CreatedByServerSocketImpl.this);
-                    handledMessages.add(baseMessage);
-                } else {
-                    messagesToSend.add(new MessageToSend(new ConfirmMessage(IDRegisterer.getInstance().getNext(), baseMessage.getId()), receiverInetSocketAddress));
+                    if (isGoingToClose) {
+                        if (System.currentTimeMillis() - timeOfLastPoll > MAX_TIME_BETWEEN_MESSAGES_WHEN_CLOSE) {
+                            runnableWhenThereIsNothingToHandle.run();
+                            return;
+                        } else {
+                            timeOfLastPoll = System.currentTimeMillis();
+                        }
+                    }
+
+                    if (!isConnectionSet() && !(baseMessage instanceof SalutationMessage)) {
+                        haveConnectionSet();
+                    }
+
+                    if (!isThisMessageAlreadyHandled(baseMessage)) {
+                        baseMessage.process(CreatedByServerSocketImpl.this);
+                        handledMessages.add(baseMessage);
+                    } else {
+                        messagesToSend.add(new MessageToSend(new ConfirmMessage(IDRegisterer.getInstance().getNext(), baseMessage.getId()), receiverInetSocketAddress));
+                    }
                 }
 
             } catch (InterruptedException e) {
@@ -53,6 +79,19 @@ class CreatedByServerSocketImpl extends MySocketImpl {
 
             return false;
         }
+
+        public void setMessageFilter(Predicate<BaseMessage> messageFilter) {
+            this.messageFilter = messageFilter;
+        }
+
+        public void setRunnableIfThereIsNothingToHandle(Runnable runnableIfThereIsNothingToHandle) {
+            this.runnableWhenThereIsNothingToHandle = runnableIfThereIsNothingToHandle;
+        }
+
+        @Override
+        public void close() {
+            isGoingToClose = true;
+        }
     }
 
     private static final Logger logger = Logger.getLogger(CreatedByUserSocketImpl.class.getName());
@@ -61,6 +100,9 @@ class CreatedByServerSocketImpl extends MySocketImpl {
 
     private final MessageController messageController;
     private final Thread messageControllerThread;
+
+    private final ServerMessageResender messageResender;
+    private final Thread messageResenderThread;
 
     private final BlockingQueue<MessageToSend> messagesToSend;
     private final BlockingQueue<BaseMessage> receivedMessages;
@@ -72,6 +114,9 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     private final ListOutputStream listOutputStream = new ListOutputStream(outputCollection);
     private final ListInputStream listInputStream = new ListInputStream(inputCollection);
 
+    private boolean isReadyToClose = false;
+    private boolean isClosed = false;
+
     CreatedByServerSocketImpl(BlockingQueue<MessageToSend> messagesToSend, BlockingQueue<BaseMessage> messagesToRead,
                               BlockingQueue<SentMessage> notConfirmedMessages, InetSocketAddress receiverInetSocketAddress) throws SocketTimeoutException, InterruptedException {
         this.messagesToSend = messagesToSend;
@@ -82,6 +127,10 @@ class CreatedByServerSocketImpl extends MySocketImpl {
         messageController = new MessageController();
         messageControllerThread = new Thread(messageController, "Message Controller Thread");
         messageControllerThread.start();
+
+        messageResender = new ServerMessageResender(messagesToSend, notConfirmedMessages, receiverInetSocketAddress);
+        messageResenderThread = new Thread(messageResender, "Message Resender Thread");
+        messageResenderThread.start();
 
         waitForConnection();
     }
@@ -99,7 +148,45 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     }
 
     public void close() {
+        listOutputStream.close();
+        listInputStream.close();
 
+        Object lock = new Object();
+
+        messageResender.setRunnableIfThereIsNothingToSend(() -> {
+            isReadyToClose = true;
+            lock.notify();
+        });
+
+        messageController.setMessageFilter(baseMessage -> !(baseMessage instanceof ByteMessage));
+
+        try {
+            while (!isReadyToClose) {
+                lock.wait();
+            }
+        } catch (InterruptedException e) {
+            logger.error(e.getMessage());
+        }
+
+        CloseMessage closeMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
+        messagesToSend.add(new MessageToSend(closeMessage, receiverInetSocketAddress));
+        notConfirmedMessages.add(new SentMessage(closeMessage, System.currentTimeMillis()));
+
+        try {
+            messageController.setRunnableIfThereIsNothingToHandle(new Runnable() {
+                @Override
+                public void run() {
+                    isClosed = true;
+                    lock.notify();
+                }
+            });
+
+            while (!isClosed) {
+                lock.wait();
+            }
+        } catch (InterruptedException e) {
+            logger.error(e.getMessage());
+        }
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {

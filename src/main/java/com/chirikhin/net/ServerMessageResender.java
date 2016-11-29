@@ -1,23 +1,27 @@
 package com.chirikhin.net;
 
+import java.net.InetSocketAddress;
 import java.util.concurrent.BlockingQueue;
-import java.util.function.BooleanSupplier;
 import java.util.logging.Logger;
 
-public class MessageResender implements Runnable {
+public class ServerMessageResender implements Runnable {
     private static final Logger logger = Logger.getLogger(MessageResender.class.getName());
 
     private static final long CHECK_PERIOD = 500;
     private static final long RESEND_TIME = 500;
 
-    private final BlockingQueue<BaseMessage> messagesToSend;
+    private final BlockingQueue<MessageToSend> messagesToSend;
     private final BlockingQueue<SentMessage> notConfirmedMessages;
+
+    private final InetSocketAddress receiverInetSocketAddress;
 
     private Runnable runnable;
 
-    public MessageResender(BlockingQueue<BaseMessage> messagesToSend, BlockingQueue<SentMessage> notConfirmedMessages) {
+    public ServerMessageResender(BlockingQueue<MessageToSend> messagesToSend, BlockingQueue<SentMessage> notConfirmedMessages,
+                                 InetSocketAddress receiverInetSocketAddress) {
         this.messagesToSend = messagesToSend;
         this.notConfirmedMessages = notConfirmedMessages;
+        this.receiverInetSocketAddress = receiverInetSocketAddress;
     }
 
     @Override
@@ -28,9 +32,9 @@ public class MessageResender implements Runnable {
                         .stream()
                         .filter(sentMessage -> System.currentTimeMillis() - sentMessage.getTime() > RESEND_TIME)
                         .forEach(sentMessage -> {
-                    messagesToSend.add(sentMessage.getBaseMessage());
-                    sentMessage.setTime(System.currentTimeMillis());
-                });
+                            messagesToSend.add(new MessageToSend(sentMessage.getBaseMessage(), receiverInetSocketAddress));
+                            sentMessage.setTime(System.currentTimeMillis());
+                        });
 
                 Thread.sleep(CHECK_PERIOD);
 
