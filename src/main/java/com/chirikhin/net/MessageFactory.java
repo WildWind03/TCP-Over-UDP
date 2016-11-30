@@ -22,8 +22,10 @@ public class MessageFactory {
 
         switch (messageType) {
             case BYTE :
-                bytes = ArrayUtils.subarray(bytes, 5, bytes.length);
-                baseMessage = new ByteMessage(id, bytes);
+                byte[] partBytes = ArrayUtils.subarray(bytes, 5, 9);
+                int part = ByteBuffer.wrap(partBytes).asIntBuffer().get();
+                bytes = ArrayUtils.subarray(bytes, 9, bytes.length);
+                baseMessage = new ByteMessage(id, part, bytes);
                 break;
             case SALUTATION:
                 baseMessage = new SalutationMessage(id);

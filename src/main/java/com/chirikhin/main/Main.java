@@ -31,9 +31,8 @@ public class Main {
                 InputStream inputStream = socket.getInputStream();
                 byte[] bytes = new byte[5];
                 inputStream.read(bytes);
-                socket.close();
-
                 System.out.println("Delivered message: " + new String(bytes));
+                socket.close();
 
                 logger.info("Socket is created!");
             } catch (IOException | InterruptedException e) {

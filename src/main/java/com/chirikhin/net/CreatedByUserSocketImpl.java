@@ -13,7 +13,9 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.LinkedTransferQueue;
@@ -88,14 +90,20 @@ class CreatedByUserSocketImpl extends MySocketImpl {
 
     private final BlockingQueue<byte[]> inputCollection = new LinkedBlockingQueue<>();
 
+    private final Map<Integer, byte[]> cachedBytes = new HashMap<>();
+    private int expectedPart = 0;
+
     private boolean isClosed = false;
     private boolean isReadyToClose = false;
+
+    private int partToSend = 0;
+
 
     CreatedByUserSocketImpl(String host, int port) throws SocketException, SocketTimeoutException, InterruptedException {
         datagramSocket = new DatagramSocket(TCP_PORT);
         receiverInetSocketAddress = new InetSocketAddress(host, port);
         listOutputStream = new ListOutputStream(bytes -> {
-            ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), bytes);
+            ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), partToSend++, bytes);
             messagesToSend.add(byteMessage);
             logger.info("New message was added to messages that are going to be sent");
             notConfirmedMessages.add(new SentMessage(byteMessage, System.currentTimeMillis()));
@@ -205,7 +213,23 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         logger.info("Handling byte message");
         BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), byteMessage.getId());
         messagesToSend.add(response);
-        inputCollection.add(byteMessage.getContentedByted());
+
+
+        if (expectedPart == byteMessage.getPart()) {
+            expectedPart++;
+            inputCollection.add(byteMessage.getContentedByted());
+
+            while (true) {
+                byte[] cachedMessage = cachedBytes.get(expectedPart);
+
+                if (null != cachedMessage) {
+                    inputCollection.add(cachedMessage);
+                    expectedPart++;
+                } else {
+                    break;
+                }
+            }
+        }
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {

@@ -10,7 +10,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -126,6 +128,11 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     private boolean isReadyToClose = false;
     private boolean isClosed = false;
 
+    private int partToSend = 0;
+
+    private final Map<Integer, byte[]> cachedBytes = new HashMap<>();
+    private int expectedPart = 0;
+
     CreatedByServerSocketImpl(BlockingQueue<MessageToSend> messagesToSend, BlockingQueue<BaseMessage> messagesToRead,
                               InetSocketAddress receiverInetSocketAddress) throws SocketTimeoutException, InterruptedException {
         this.messagesToSend = messagesToSend;
@@ -133,7 +140,7 @@ class CreatedByServerSocketImpl extends MySocketImpl {
         this.receiverInetSocketAddress = receiverInetSocketAddress;
 
         listOutputStream = new ListOutputStream(bytes -> {
-            ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), bytes);
+            ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), partToSend++, bytes);
             messagesToSend.add(new MessageToSend(byteMessage, receiverInetSocketAddress));
             notConfirmedMessages.add(new SentMessage(byteMessage, System.currentTimeMillis()));
         });
@@ -234,8 +241,22 @@ class CreatedByServerSocketImpl extends MySocketImpl {
         logger.info("Handling byte message");
         BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), byteMessage.getId());
         messagesToSend.add(new MessageToSend(response, receiverInetSocketAddress));
-        inputCollection.add(byteMessage.getContentedByted());
 
+        if (expectedPart == byteMessage.getPart()) {
+            expectedPart++;
+            inputCollection.add(byteMessage.getContentedByted());
+
+            while (true) {
+                byte[] cachedMessage = cachedBytes.get(expectedPart);
+
+                if (null != cachedMessage) {
+                    inputCollection.add(cachedMessage);
+                    expectedPart++;
+                } else {
+                    break;
+                }
+            }
+        }
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
