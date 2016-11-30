@@ -1,8 +1,10 @@
 package com.chirikhin.net;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.text.StrBuilder;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.logging.Logger;
 
 public class MessageFactory {
@@ -13,6 +15,7 @@ public class MessageFactory {
     }
 
     public static BaseMessage createMessage(byte[] bytes) {
+        System.out.println("Length: " +  bytes.length);
         MessageType messageType = MessageType.values()[bytes[0]];
         BaseMessage baseMessage;
 
@@ -24,7 +27,10 @@ public class MessageFactory {
             case BYTE :
                 byte[] partBytes = ArrayUtils.subarray(bytes, 5, 9);
                 int part = ByteBuffer.wrap(partBytes).asIntBuffer().get();
+                System.out.println(part + "");
                 bytes = ArrayUtils.subarray(bytes, 9, bytes.length);
+                System.out.println(bytes.length + "");
+                System.out.println(new String(bytes));
                 baseMessage = new ByteMessage(id, part, bytes);
                 break;
             case SALUTATION:

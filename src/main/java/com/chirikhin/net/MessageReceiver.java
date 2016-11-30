@@ -1,5 +1,6 @@
 package com.chirikhin.net;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.log4j.Logger;
 
 import java.io.Closeable;
@@ -56,8 +57,10 @@ public class MessageReceiver implements Runnable, Closeable {
                     continue;
                 }
 
+                System.out.println("Received data: " + datagramPacket.getLength());
 
-                BaseMessage baseMessage = MessageFactory.createMessage(datagramPacket.getData());
+
+                BaseMessage baseMessage = MessageFactory.createMessage(ArrayUtils.subarray(datagramPacket.getData(), 0, datagramPacket.getLength()));
 
                 if (baseMessage instanceof SalutationMessage) {
                     logger.info("Salutation Message was received!");

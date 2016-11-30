@@ -132,12 +132,14 @@ class CreatedByServerSocketImpl extends MySocketImpl {
 
     private final Map<Integer, byte[]> cachedBytes = new HashMap<>();
     private int expectedPart = 0;
+    private Runnable commandOnClose;
 
     CreatedByServerSocketImpl(BlockingQueue<MessageToSend> messagesToSend, BlockingQueue<BaseMessage> messagesToRead,
-                              InetSocketAddress receiverInetSocketAddress) throws SocketTimeoutException, InterruptedException {
+                              InetSocketAddress receiverInetSocketAddress, Runnable commandOnClose) throws SocketTimeoutException, InterruptedException {
         this.messagesToSend = messagesToSend;
         this.receivedMessages = messagesToRead;
         this.receiverInetSocketAddress = receiverInetSocketAddress;
+        this.commandOnClose = commandOnClose;
 
         listOutputStream = new ListOutputStream(bytes -> {
             ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), partToSend++, bytes);
@@ -224,6 +226,17 @@ class CreatedByServerSocketImpl extends MySocketImpl {
                 logger.error(e.getMessage());
             }
 
+            commandOnClose.run();
+
+        messagesToSend.clear();
+        notConfirmedMessages.clear();
+        receivedMessages.clear();
+        listInputStream.close();
+        listOutputStream.close();
+
+        messageResenderThread.interrupt();
+        messageControllerThread.interrupt();
+
         System.out.println("Stopped!");
     }
 
@@ -256,24 +269,26 @@ class CreatedByServerSocketImpl extends MySocketImpl {
                     break;
                 }
             }
+        } else {
+            cachedBytes.put(byteMessage.getPart(), byteMessage.getContentedByted());
         }
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
-        messagesToSend.clear();
-        notConfirmedMessages.clear();
-        logger.info("Handling close message");
+        new Thread(() -> {
+            messagesToSend.clear();
+            notConfirmedMessages.clear();
+            receivedMessages.clear();
 
-        //messageControllerThread.interrupt();
-        //messageResenderThread.interrupt();
+            messageResenderThread.interrupt();
+            messageControllerThread.interrupt();
 
-        BaseMessage baseMessage = new ConfirmMessage(IDRegisterer.getInstance().getNext(), closeMessage.getId());
-        messagesToSend.add(new MessageToSend(baseMessage, receiverInetSocketAddress));
+            logger.info("Handling close message");
+            listInputStream.close();
+            listOutputStream.close();
+        });
 
-
-        //CloseMessage myCloseMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
-        //messagesToSend.add(new MessageToSend(myCloseMessage, receiverInetSocketAddress));
-        //notConfirmedMessages.add(new SentMessage(myCloseMessage, System.currentTimeMillis()));
+        commandOnClose.run();
     }
 
     public void handleConfirmMessage(ConfirmMessage confirmMessage) {

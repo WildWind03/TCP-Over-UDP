@@ -2,13 +2,17 @@ package com.chirikhin.net;
 
 import org.apache.log4j.Logger;
 
-import java.net.*;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class ServerSocket {
+
     private class MessageController implements Runnable {
         @Override
         public void run() {
@@ -20,10 +24,6 @@ public class ServerSocket {
                     if (null == messagesForClient) {
                         connectionRequests.add(serverMessage);
                     } else {
-
-                        if (serverMessage.getBaseMessage() instanceof ByteMessage) {
-                            System.out.println("New byte message was delivered to a client");
-                        }
                         messagesForClient.add(serverMessage.getBaseMessage());
                     }
                 }
@@ -79,7 +79,7 @@ public class ServerSocket {
             baseMessages.add(serverMessage.getBaseMessage());
             clients.put(serverMessage.getInetAddress(), baseMessages);
 
-            return new Socket(new CreatedByServerSocketImpl(messageToSend, baseMessages, serverMessage.getInetAddress()));
+            return new Socket(new CreatedByServerSocketImpl(messageToSend, baseMessages, serverMessage.getInetAddress(), () -> clients.remove(serverMessage.getInetAddress())));
         } else {
             return accept();
         }

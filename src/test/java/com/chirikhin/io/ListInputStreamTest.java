@@ -3,6 +3,8 @@ package com.chirikhin.io;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -72,6 +74,17 @@ public class ListInputStreamTest {
         listInputStream.read(bytes3);
         String string3 = new String(bytes3);
         Assert.assertEquals(string3, text1 + text2 + text3);
+    }
+
+    @Test
+    public void read3() {
+        BlockingQueue<byte[]> bytes = new LinkedBlockingQueue<>();
+        ListInputStream listInputStream = new ListInputStream(bytes);
+        try {
+            listInputStream.read();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
 }

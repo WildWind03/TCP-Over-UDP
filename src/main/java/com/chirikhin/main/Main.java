@@ -18,9 +18,12 @@ public class Main {
             try {
                 ServerSocket serverSocket = new ServerSocket(12000);
                 Socket socket = serverSocket.accept();
-                socket.getOutputStream().write("Hello".getBytes());
 
-                logger.info("Socket is accepted!");
+                String helloStr = "Hello";
+                socket.getOutputStream().write(helloStr.getBytes());
+
+                String heyStr = "Hey";
+                socket.getOutputStream().write(heyStr.getBytes());
             } catch (SocketException | InterruptedException | SocketTimeoutException e) {
                 e.printStackTrace();
             }
@@ -29,12 +32,10 @@ public class Main {
                 Socket socket = new Socket("localhost", 12000);
 
                 InputStream inputStream = socket.getInputStream();
-                byte[] bytes = new byte[5];
+                byte[] bytes = new byte[8];
                 inputStream.read(bytes);
                 System.out.println("Delivered message: " + new String(bytes));
                 socket.close();
-
-                logger.info("Socket is created!");
             } catch (IOException | InterruptedException e) {
                 e.printStackTrace();
             }

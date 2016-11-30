@@ -202,6 +202,17 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         }
 
         System.out.println("Stopped");
+
+        messagesToSend.clear();
+        notConfirmedMessages.clear();
+        receivedMessages.clear();
+        listInputStream.close();
+        listOutputStream.close();
+
+        messageReceiverThread.interrupt();
+        messageSenderThread.interrupt();
+        messageResenderThread.interrupt();
+        messageControllerThread.interrupt();
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {
@@ -213,6 +224,8 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         logger.info("Handling byte message");
         BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), byteMessage.getId());
         messagesToSend.add(response);
+
+        //System.out.println(new String (byteMessage.getContentedByted()));
 
 
         if (expectedPart == byteMessage.getPart()) {
@@ -229,27 +242,26 @@ class CreatedByUserSocketImpl extends MySocketImpl {
                     break;
                 }
             }
+        } else {
+            cachedBytes.put(byteMessage.getPart(), byteMessage.getContentedByted());
         }
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
-        messagesToSend.clear();
-        notConfirmedMessages.clear();
-
-        BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), closeMessage.getId());
-        messagesToSend.add(response);
-
-        //messageSenderThread.interrupt();
-        //messageReceiverThread.interrupt();
-
         logger.info("Handling close message");
-        try {
-            messageReceiver.close();
-            listOutputStream.close();
+
+        new Thread(() -> {
+            messagesToSend.clear();
+            notConfirmedMessages.clear();
+            receivedMessages.clear();
             listInputStream.close();
-        } catch (IOException e) {
-            logger.error(e.getMessage());
-        }
+            listOutputStream.close();
+
+            messageReceiverThread.interrupt();
+            messageSenderThread.interrupt();
+            messageResenderThread.interrupt();
+            messageControllerThread.interrupt();
+        });
     }
 
     public void handleConfirmMessage(ConfirmMessage confirmMessage) {
