@@ -142,6 +142,7 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     }
 
     public void close() {
+        System.out.println("Start closing");
         listOutputStream.close();
         listInputStream.close();
         messageReceiver.setMessageFilter(baseMessage -> !(baseMessage instanceof ByteMessage));
@@ -155,6 +156,8 @@ class CreatedByUserSocketImpl extends MySocketImpl {
             }
         });
 
+        System.out.println("Block until all the messages will be handled");
+
         synchronized (lock) {
             try {
                 while (!isReadyToClose) {
@@ -165,9 +168,13 @@ class CreatedByUserSocketImpl extends MySocketImpl {
             }
         }
 
+        System.out.println("All the messages are handled");
+
         CloseMessage closeMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
         messagesToSend.add(closeMessage);
         notConfirmedMessages.add(new SentMessage(closeMessage, System.currentTimeMillis()));
+
+        System.out.println("Block until another socket will stop sending messages");
 
         try {
             messageReceiver.close(() -> {
@@ -185,6 +192,8 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         } catch (IOException | InterruptedException e) {
             logger.error(e.getMessage());
         }
+
+        System.out.println("Stopped");
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {
@@ -200,6 +209,15 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
+        messagesToSend.clear();
+        notConfirmedMessages.clear();
+
+        BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), closeMessage.getId());
+        messagesToSend.add(response);
+
+        //messageSenderThread.interrupt();
+        //messageReceiverThread.interrupt();
+
         logger.info("Handling close message");
         try {
             messageReceiver.close();

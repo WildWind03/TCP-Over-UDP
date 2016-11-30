@@ -30,7 +30,7 @@ class CreatedByServerSocketImpl extends MySocketImpl {
         private final CycleLinkedList<BaseMessage> handledMessages = new CycleLinkedList<>(SIZE_OF_HANDLED_MESSAGES_LIST);
 
         private boolean isGoingToClose = false;
-        private long timeOfLastPoll;
+        private long timeOfLastPoll = -1;
         private Runnable runnableWhenThereIsNothingToHandle;
 
         @Override
@@ -39,18 +39,27 @@ class CreatedByServerSocketImpl extends MySocketImpl {
                 while (!Thread.currentThread().isInterrupted()) {
                     BaseMessage baseMessage = receivedMessages.poll(TIMEOUT_FOR_POLL_FROM_QUEUE, TimeUnit.MILLISECONDS);
 
-                    if (null == baseMessage || !messageFilter.test(baseMessage)) {
-                        continue;
-                    }
-
                     if (isGoingToClose) {
+                        if (timeOfLastPoll < 0) {
+                            timeOfLastPoll = System.currentTimeMillis();
+                        }
+
                         if (System.currentTimeMillis() - timeOfLastPoll > MAX_TIME_BETWEEN_MESSAGES_WHEN_CLOSE) {
                             runnableWhenThereIsNothingToHandle.run();
                             return;
                         } else {
-                            timeOfLastPoll = System.currentTimeMillis();
+                            if (null != baseMessage) {
+                                timeOfLastPoll = System.currentTimeMillis();
+                            }
                         }
                     }
+
+                    if (null == baseMessage || !messageFilter.test(baseMessage)) {
+                        continue;
+                    }
+
+                    System.out.println("Got new not null message!");
+
 
                     if (!isConnectionSet() && !(baseMessage instanceof SalutationMessage)) {
                         haveConnectionSet();
@@ -153,6 +162,7 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     }
 
     public void close() {
+        System.out.println("Start closing");
         listOutputStream.close();
         listInputStream.close();
 
@@ -167,6 +177,8 @@ class CreatedByServerSocketImpl extends MySocketImpl {
 
         messageController.setMessageFilter(baseMessage -> !(baseMessage instanceof ByteMessage));
 
+        System.out.println("Blocking untill all the messages will be delivered");
+
         synchronized (lock) {
 
             try {
@@ -178,20 +190,23 @@ class CreatedByServerSocketImpl extends MySocketImpl {
             }
         }
 
+        System.out.println("All the messages have been sent!");
+
         CloseMessage closeMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
         messagesToSend.add(new MessageToSend(closeMessage, receiverInetSocketAddress));
         notConfirmedMessages.add(new SentMessage(closeMessage, System.currentTimeMillis()));
 
+        messageController.close();
+
         try {
-            messageController.setRunnableIfThereIsNothingToHandle(new Runnable() {
-                @Override
-                public void run() {
-                    synchronized (lock) {
-                        isClosed = true;
-                        lock.notify();
-                    }
+            messageController.setRunnableIfThereIsNothingToHandle(() -> {
+                synchronized (lock) {
+                    isClosed = true;
+                    lock.notify();
                 }
             });
+
+            System.out.println("Block until all the messages will stop coming");
 
             synchronized (lock) {
                 while (!isClosed) {
@@ -201,6 +216,8 @@ class CreatedByServerSocketImpl extends MySocketImpl {
             } catch(InterruptedException e){
                 logger.error(e.getMessage());
             }
+
+        System.out.println("Stopped!");
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {
@@ -222,13 +239,20 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
+        messagesToSend.clear();
+        notConfirmedMessages.clear();
         logger.info("Handling close message");
+
+        //messageControllerThread.interrupt();
+        //messageResenderThread.interrupt();
+
         BaseMessage baseMessage = new ConfirmMessage(IDRegisterer.getInstance().getNext(), closeMessage.getId());
         messagesToSend.add(new MessageToSend(baseMessage, receiverInetSocketAddress));
 
-        CloseMessage myCloseMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
-        messagesToSend.add(new MessageToSend(myCloseMessage, receiverInetSocketAddress));
-        notConfirmedMessages.add(new SentMessage(myCloseMessage, System.currentTimeMillis()));
+
+        //CloseMessage myCloseMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
+        //messagesToSend.add(new MessageToSend(myCloseMessage, receiverInetSocketAddress));
+        //notConfirmedMessages.add(new SentMessage(myCloseMessage, System.currentTimeMillis()));
     }
 
     public void handleConfirmMessage(ConfirmMessage confirmMessage) {

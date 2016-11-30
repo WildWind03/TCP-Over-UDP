@@ -19,7 +19,6 @@ public class Main {
                 ServerSocket serverSocket = new ServerSocket(12000);
                 Socket socket = serverSocket.accept();
                 socket.getOutputStream().write("Hello".getBytes());
-                socket.close();
 
                 logger.info("Socket is accepted!");
             } catch (SocketException | InterruptedException | SocketTimeoutException e) {
@@ -32,6 +31,7 @@ public class Main {
                 InputStream inputStream = socket.getInputStream();
                 byte[] bytes = new byte[5];
                 inputStream.read(bytes);
+                socket.close();
 
                 System.out.println("Delivered message: " + new String(bytes));
 
