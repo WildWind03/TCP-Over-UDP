@@ -1,5 +1,5 @@
 group 'ru.chirikhin'
-version '1.0-SNAPSHOT'
+version '1'
 
 apply plugin: 'java'
 apply plugin: 'application'
@@ -13,4 +13,14 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.11'
     compile 'apache-log4j:log4j:1.2.15'
     compile 'org.apache.commons:commons-lang3:3.5'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class' : 'com.chirikhin.main.Main'
+    }
+
+    from {
+        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    }
 }

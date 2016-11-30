@@ -7,8 +7,8 @@ import java.util.logging.Logger;
 public class ServerMessageResender implements Runnable {
     private static final Logger logger = Logger.getLogger(MessageResender.class.getName());
 
-    private static final long CHECK_PERIOD = 500;
-    private static final long RESEND_TIME = 500;
+    private static final long CHECK_PERIOD = 100;
+    private static final long RESEND_TIME = 100;
 
     private final BlockingQueue<MessageToSend> messagesToSend;
     private final BlockingQueue<SentMessage> notConfirmedMessages;
@@ -33,6 +33,7 @@ public class ServerMessageResender implements Runnable {
                         .filter(sentMessage -> System.currentTimeMillis() - sentMessage.getTime() > RESEND_TIME)
                         .forEach(sentMessage -> {
                             messagesToSend.add(new MessageToSend(sentMessage.getBaseMessage(), receiverInetSocketAddress));
+                            logger.info("New message was resent");
                             sentMessage.setTime(System.currentTimeMillis());
                         });
 

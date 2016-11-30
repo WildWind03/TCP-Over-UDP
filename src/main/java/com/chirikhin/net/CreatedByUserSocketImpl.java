@@ -12,10 +12,12 @@ import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.LinkedTransferQueue;
+import java.util.function.Consumer;
 
 class CreatedByUserSocketImpl extends MySocketImpl {
     private class MessageController implements Runnable {
@@ -28,13 +30,19 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         @Override
         public void run() {
             try {
-                BaseMessage baseMessage = receivedMessages.take();
+                while (!Thread.currentThread().isInterrupted()) {
+                    BaseMessage baseMessage = receivedMessages.take();
 
-                if (!isThisMessageAlreadyHandled(baseMessage)) {
-                    baseMessage.process(CreatedByUserSocketImpl.this);
-                    handledMessages.add(baseMessage);
-                } else {
-                    messagesToSend.add(new ConfirmMessage(IDRegisterer.getInstance().getNext(), baseMessage.getId()));
+                    if (baseMessage instanceof SalutationMessage) {
+                        logger.info("Controller is handling salutation message");
+                    }
+
+                    if (!isThisMessageAlreadyHandled(baseMessage)) {
+                        baseMessage.process(CreatedByUserSocketImpl.this);
+                        handledMessages.add(baseMessage);
+                    } else {
+                        messagesToSend.add(new ConfirmMessage(IDRegisterer.getInstance().getNext(), baseMessage.getId()));
+                    }
                 }
 
             } catch (InterruptedException e) {
@@ -78,7 +86,6 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     private final BlockingQueue<BaseMessage> receivedMessages = new LinkedTransferQueue<>();
     private final BlockingQueue<SentMessage> notConfirmedMessages = new LinkedBlockingQueue<>();
 
-    private final BlockingQueue<byte[]> outputCollection = new LinkedBlockingQueue<>();
     private final BlockingQueue<byte[]> inputCollection = new LinkedBlockingQueue<>();
 
     private boolean isClosed = false;
@@ -87,7 +94,12 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     CreatedByUserSocketImpl(String host, int port) throws SocketException, SocketTimeoutException, InterruptedException {
         datagramSocket = new DatagramSocket(TCP_PORT);
         receiverInetSocketAddress = new InetSocketAddress(host, port);
-        listOutputStream = new ListOutputStream(outputCollection);
+        listOutputStream = new ListOutputStream(bytes -> {
+            ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), bytes);
+            messagesToSend.add(byteMessage);
+            logger.info("New message was added to messages that are going to be sent");
+            notConfirmedMessages.add(new SentMessage(byteMessage, System.currentTimeMillis()));
+        });
         listInputStream = new ListInputStream(inputCollection);
 
         messageReceiver = new MessageReceiver(receivedMessages, datagramSocket);
@@ -137,16 +149,20 @@ class CreatedByUserSocketImpl extends MySocketImpl {
         Object lock = new Object();
 
         messageResender.setRunnableIfThereIsNothingToSend(() -> {
-            isReadyToClose = true;
-            lock.notify();
+            synchronized (lock) {
+                isReadyToClose = true;
+                lock.notify();
+            }
         });
 
-        try {
-            while (!isReadyToClose) {
-                lock.wait();
+        synchronized (lock) {
+            try {
+                while (!isReadyToClose) {
+                    lock.wait();
+                }
+            } catch (InterruptedException e) {
+                logger.error(e.getMessage());
             }
-        } catch (InterruptedException e) {
-            logger.error(e.getMessage());
         }
 
         CloseMessage closeMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
@@ -155,12 +171,16 @@ class CreatedByUserSocketImpl extends MySocketImpl {
 
         try {
             messageReceiver.close(() -> {
-                isClosed = true;
-                lock.notify();
+                synchronized (lock) {
+                    isClosed = true;
+                    lock.notify();
+                }
             });
 
-            while (!isClosed) {
-                lock.wait();
+            synchronized (lock) {
+                while (!isClosed) {
+                    lock.wait();
+                }
             }
         } catch (IOException | InterruptedException e) {
             logger.error(e.getMessage());
@@ -168,16 +188,19 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {
+        logger.info("Handling salutation message");
         haveConnectionSet();
     }
 
     public void handleByteMessage(ByteMessage byteMessage) {
+        logger.info("Handling byte message");
         BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), byteMessage.getId());
         messagesToSend.add(response);
-        inputCollection.add(byteMessage.bytes());
+        inputCollection.add(byteMessage.getContentedByted());
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
+        logger.info("Handling close message");
         try {
             messageReceiver.close();
             listOutputStream.close();
@@ -188,6 +211,8 @@ class CreatedByUserSocketImpl extends MySocketImpl {
     }
 
     public void handleConfirmMessage(ConfirmMessage confirmMessage) {
+        logger.info("Handling confirm messages!");
+
         Iterator<SentMessage> iterator = notConfirmedMessages.iterator();
         while (iterator.hasNext()) {
             SentMessage baseMessage = iterator.next();

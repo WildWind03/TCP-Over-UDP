@@ -1,11 +1,12 @@
 package com.chirikhin.net;
 
+import org.apache.log4j.Logger;
+
 import java.net.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.logging.Logger;
 
 public class ServerSocket {
     private class MessageController implements Runnable {
@@ -14,11 +15,15 @@ public class ServerSocket {
             try {
                 while (!Thread.currentThread().isInterrupted()) {
                     ServerMessage serverMessage = baseMessages.take();
-                    InetSocketAddress inetAddress = serverMessage.getInetAddress();
-                    if (null == inetAddress) {
+
+                    BlockingQueue<BaseMessage> messagesForClient = clients.get(serverMessage.getInetAddress());
+                    if (null == messagesForClient) {
                         connectionRequests.add(serverMessage);
                     } else {
-                        BlockingQueue<BaseMessage> messagesForClient = clients.get(inetAddress);
+
+                        if (serverMessage.getBaseMessage() instanceof ByteMessage) {
+                            System.out.println("New byte message was delivered to a client");
+                        }
                         messagesForClient.add(serverMessage.getBaseMessage());
                     }
                 }
@@ -57,16 +62,24 @@ public class ServerSocket {
         messageController = new MessageController();
         messageControllerThread = new Thread(messageController, "Message Controller Thread");
         messageControllerThread.start();
+
+        messageSender = new ServerMessageSender(messageToSend, datagramSocket);
+        messageSenderThread = new Thread(messageSender, "Message Sender Thread");
+        messageSenderThread.start();
+
+        logger.info("Server Socket Started!");
     }
 
     public Socket accept() throws SocketException, SocketTimeoutException, InterruptedException {
         ServerMessage serverMessage = connectionRequests.take();
+        logger.info("New connection request is accepting");
 
         if (serverMessage.getBaseMessage() instanceof SalutationMessage) {
             BlockingQueue<BaseMessage> baseMessages = new LinkedBlockingQueue<>();
+            baseMessages.add(serverMessage.getBaseMessage());
             clients.put(serverMessage.getInetAddress(), baseMessages);
 
-            return new Socket(new CreatedByServerSocketImpl(messageToSend, ));
+            return new Socket(new CreatedByServerSocketImpl(messageToSend, baseMessages, serverMessage.getInetAddress()));
         } else {
             return accept();
         }

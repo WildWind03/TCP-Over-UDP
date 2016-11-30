@@ -22,4 +22,8 @@ public class ByteMessage extends BaseMessage {
     byte[] bytes() {
         return ArrayUtils.addAll(getByteArrayWithTypeAndId(MessageType.BYTE), bytes);
     }
+
+    byte[] getContentedByted() {
+        return bytes;
+    }
 }

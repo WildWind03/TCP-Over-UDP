@@ -5,17 +5,23 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 public class ListOutputStream extends OutputStream {
     private static final Logger logger = Logger.getLogger(ListOutputStream.class.getName());
 
-    private final Collection<byte[]> collection;
+    //private final Collection<byte[]> collection;
 
     private boolean isClosed = false;
+    private final Consumer<byte[]> consumer;
 
-    public ListOutputStream(Collection<byte[]> collection) {
+    /*public ListOutputStream(Collection<byte[]> collection) {
         this.collection = collection;
+    }*/
+    public ListOutputStream(Consumer<byte[]> consumer) {
+        this.consumer = consumer;
     }
 
     public void write(int b) throws IOException {
@@ -29,7 +35,8 @@ public class ListOutputStream extends OutputStream {
 
         byte[] a = new byte[4];
         byteBuffer.get(a);
-        collection.add(a);
+        consumer.accept(a);
+        //collection.add(a);
     }
 
     @Override
@@ -39,7 +46,8 @@ public class ListOutputStream extends OutputStream {
         }
 
         byte[] a = Arrays.copyOfRange(b, off, off + len);
-        collection.add(a);
+        consumer.accept(a);
+        //collection.add(a);
     }
 
     @Override
@@ -48,7 +56,9 @@ public class ListOutputStream extends OutputStream {
             return;
         }
 
-        collection.add(b);
+        consumer.accept(b);
+        //collection.add(b);
+        logger.info("New message was added to queue");
     }
 
     @Override

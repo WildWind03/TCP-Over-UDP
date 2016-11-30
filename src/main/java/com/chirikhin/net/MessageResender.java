@@ -7,8 +7,8 @@ import java.util.logging.Logger;
 public class MessageResender implements Runnable {
     private static final Logger logger = Logger.getLogger(MessageResender.class.getName());
 
-    private static final long CHECK_PERIOD = 500;
-    private static final long RESEND_TIME = 500;
+    private static final long CHECK_PERIOD = 100;
+    private static final long RESEND_TIME = 100;
 
     private final BlockingQueue<BaseMessage> messagesToSend;
     private final BlockingQueue<SentMessage> notConfirmedMessages;

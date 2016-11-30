@@ -59,8 +59,13 @@ public class MessageReceiver implements Runnable, Closeable {
 
                 BaseMessage baseMessage = MessageFactory.createMessage(datagramPacket.getData());
 
+                if (baseMessage instanceof SalutationMessage) {
+                    logger.info("Salutation Message was received!");
+                }
+
                 if (messageFilter.test(baseMessage)) {
                     messages.put(baseMessage);
+                    logger.info("Salutation Message was put into queue");
                 }
             }
         } catch (IOException e) {

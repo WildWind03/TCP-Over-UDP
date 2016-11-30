@@ -6,7 +6,7 @@ import java.util.logging.Logger;
 public abstract class MySocketImpl implements SocketImpl {
     private static final Logger logger = Logger.getLogger(MySocketImpl.class.getName());
 
-    private static final int TIME_TO_WAIT = 2000;
+    private static final int TIME_TO_WAIT = 5000;
 
     private boolean isConnectionSet = false;
     private final Object lock = new Object();
@@ -17,16 +17,20 @@ public abstract class MySocketImpl implements SocketImpl {
     abstract void handleByteMessage(ByteMessage byteMessage);
 
     protected void waitForConnection() throws InterruptedException, SocketTimeoutException {
+        logger.info("Start waiting for connetion");
+
         long timeOfStart = System.currentTimeMillis();
         long timeToWait = TIME_TO_WAIT;
 
-        while (timeToWait > 0) {
-            lock.wait(timeToWait);
+        synchronized (lock) {
+            while (timeToWait > 0) {
+                lock.wait(timeToWait);
 
-            if (isConnectionSet) {
-                return;
-            } else {
-                timeToWait = System.currentTimeMillis() - timeOfStart;
+                if (isConnectionSet) {
+                    return;
+                } else {
+                    timeToWait = TIME_TO_WAIT - (System.currentTimeMillis() - timeOfStart);
+                }
             }
         }
 
@@ -38,8 +42,10 @@ public abstract class MySocketImpl implements SocketImpl {
     }
 
     protected void haveConnectionSet() {
-        isConnectionSet = true;
-        lock.notify();
+        synchronized (lock) {
+            isConnectionSet = true;
+            lock.notify();
+        }
     }
 
 

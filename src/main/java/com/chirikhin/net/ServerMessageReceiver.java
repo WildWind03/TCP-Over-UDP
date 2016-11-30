@@ -25,6 +25,11 @@ public class ServerMessageReceiver implements Runnable {
             while (!Thread.currentThread().isInterrupted()) {
                 datagramSocket.receive(datagramPacket);
                 ServerMessage baseMessage = ServerMessageFactory.createMessage(datagramPacket);
+
+                if (baseMessage.getBaseMessage() instanceof ByteMessage) {
+                    System.out.println("New byte message was received!");
+                }
+
                 messages.put(baseMessage);
             }
         } catch (IOException e) {

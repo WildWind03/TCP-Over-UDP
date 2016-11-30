@@ -26,6 +26,10 @@ public class MessageSender implements Runnable {
         try {
             while(!Thread.currentThread().isInterrupted()) {
                 BaseMessage baseMessage = baseMessages.take();
+                if (baseMessage instanceof ByteMessage) {
+                    System.out.println("New byte message was sent");
+                }
+
                 datagramSocket.send(new DatagramPacket(baseMessage.bytes(), baseMessage.bytes().length, inetSocketAddress));
             }
         } catch (InterruptedException e) {

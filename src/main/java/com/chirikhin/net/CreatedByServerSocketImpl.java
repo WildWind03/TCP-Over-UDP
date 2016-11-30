@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 class CreatedByServerSocketImpl extends MySocketImpl {
@@ -106,23 +107,27 @@ class CreatedByServerSocketImpl extends MySocketImpl {
 
     private final BlockingQueue<MessageToSend> messagesToSend;
     private final BlockingQueue<BaseMessage> receivedMessages;
-    private final BlockingQueue<SentMessage> notConfirmedMessages;
+    private final BlockingQueue<SentMessage> notConfirmedMessages = new LinkedBlockingQueue<>();
 
-    private final BlockingQueue<byte[]> outputCollection = new LinkedBlockingQueue<>();
     private final BlockingQueue<byte[]> inputCollection = new LinkedBlockingQueue<>();
 
-    private final ListOutputStream listOutputStream = new ListOutputStream(outputCollection);
+    private final ListOutputStream listOutputStream;
     private final ListInputStream listInputStream = new ListInputStream(inputCollection);
 
     private boolean isReadyToClose = false;
     private boolean isClosed = false;
 
     CreatedByServerSocketImpl(BlockingQueue<MessageToSend> messagesToSend, BlockingQueue<BaseMessage> messagesToRead,
-                              BlockingQueue<SentMessage> notConfirmedMessages, InetSocketAddress receiverInetSocketAddress) throws SocketTimeoutException, InterruptedException {
+                              InetSocketAddress receiverInetSocketAddress) throws SocketTimeoutException, InterruptedException {
         this.messagesToSend = messagesToSend;
         this.receivedMessages = messagesToRead;
-        this.notConfirmedMessages = notConfirmedMessages;
         this.receiverInetSocketAddress = receiverInetSocketAddress;
+
+        listOutputStream = new ListOutputStream(bytes -> {
+            ByteMessage byteMessage = new ByteMessage(IDRegisterer.getInstance().getNext(), bytes);
+            messagesToSend.add(new MessageToSend(byteMessage, receiverInetSocketAddress));
+            notConfirmedMessages.add(new SentMessage(byteMessage, System.currentTimeMillis()));
+        });
 
         messageController = new MessageController();
         messageControllerThread = new Thread(messageController, "Message Controller Thread");
@@ -154,18 +159,23 @@ class CreatedByServerSocketImpl extends MySocketImpl {
         Object lock = new Object();
 
         messageResender.setRunnableIfThereIsNothingToSend(() -> {
-            isReadyToClose = true;
-            lock.notify();
+            synchronized (lock) {
+                isReadyToClose = true;
+                lock.notify();
+            }
         });
 
         messageController.setMessageFilter(baseMessage -> !(baseMessage instanceof ByteMessage));
 
-        try {
-            while (!isReadyToClose) {
-                lock.wait();
+        synchronized (lock) {
+
+            try {
+                while (!isReadyToClose) {
+                    lock.wait();
+                }
+            } catch (InterruptedException e) {
+                logger.error(e.getMessage());
             }
-        } catch (InterruptedException e) {
-            logger.error(e.getMessage());
         }
 
         CloseMessage closeMessage = new CloseMessage(IDRegisterer.getInstance().getNext());
@@ -176,20 +186,25 @@ class CreatedByServerSocketImpl extends MySocketImpl {
             messageController.setRunnableIfThereIsNothingToHandle(new Runnable() {
                 @Override
                 public void run() {
-                    isClosed = true;
-                    lock.notify();
+                    synchronized (lock) {
+                        isClosed = true;
+                        lock.notify();
+                    }
                 }
             });
 
-            while (!isClosed) {
-                lock.wait();
+            synchronized (lock) {
+                while (!isClosed) {
+                    lock.wait();
+                }
             }
-        } catch (InterruptedException e) {
-            logger.error(e.getMessage());
-        }
+            } catch(InterruptedException e){
+                logger.error(e.getMessage());
+            }
     }
 
     public void handleSalutationMessage(SalutationMessage salutationMessage) {
+        logger.info("Handling salutation message");
         BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), salutationMessage.getId());
         messagesToSend.add(new MessageToSend(response, receiverInetSocketAddress));
 
@@ -199,13 +214,15 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     }
 
     public void handleByteMessage(ByteMessage byteMessage) {
+        logger.info("Handling byte message");
         BaseMessage response = new ConfirmMessage(IDRegisterer.getInstance().getNext(), byteMessage.getId());
         messagesToSend.add(new MessageToSend(response, receiverInetSocketAddress));
-        inputCollection.add(byteMessage.bytes());
+        inputCollection.add(byteMessage.getContentedByted());
 
     }
 
     public void handleCloseMessage(CloseMessage closeMessage) {
+        logger.info("Handling close message");
         BaseMessage baseMessage = new ConfirmMessage(IDRegisterer.getInstance().getNext(), closeMessage.getId());
         messagesToSend.add(new MessageToSend(baseMessage, receiverInetSocketAddress));
 
@@ -215,6 +232,7 @@ class CreatedByServerSocketImpl extends MySocketImpl {
     }
 
     public void handleConfirmMessage(ConfirmMessage confirmMessage) {
+        logger.info("Handling confirm message");
         Iterator<SentMessage> iterator = notConfirmedMessages.iterator();
         while (iterator.hasNext()) {
             SentMessage baseMessage = iterator.next();
